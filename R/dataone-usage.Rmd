@@ -10,6 +10,7 @@ library(httr)
 library(jsonlite)
 library(ggplot2)
 library(scales)
+source("geohash.R")
 ```
 
 Create a graph of data downloads for a given Member Node, such as the KNB:
@@ -80,3 +81,56 @@ plot_downloads('nodeId:urn\\:node\\:EDACGSTORE+AND+-ipAddress:(128.111.54.80+OR+
 plot_downloads('nodeId:urn\\:node\\:IOE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'IOE Downloads')
 plot_downloads('nodeId:urn\\:node\\:GLEON+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'GLEON Downloads')
 ```
+
+# Map Downloads by Geohash
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+#' Query DataONE and summarize download counts by geohash
+#' @param query a SOLR-encoded query string to choose the set of records to include in the downloads
+#' @param level an interger from 1 to 9 indicating the geohash level to use for grouping
+#' @return data frame with the counts for each geohash for that query
+counts_by_geohash <- function(query='nodeId:urn\\:node\\:KNB', level=3) {
+    #               https://cn.dataone.org/cn/v1/query/logsolr/select?q='
+    # &fq=event:read&facet=true&facet.field=geohash_4&wt=json
+    d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
+    d1_uri_params <- '&facet.limit=5000&wt=json&fq=event:read&facet=true&facet.field='
+    fieldname <- paste0('geohash_', level)
+    cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
+    sslkey="/Users/jones/certs/cn-ucsb-1.dataone.org.key"
+    d1_uri <- paste0(d1_uri_base, query, d1_uri_params, fieldname)
+    response <- GET(d1_uri, config=config(sslcert = cert, sslkey = sslkey))
+    if (response$status_code != 200) {
+        print("Failed downloading usage stats...")
+    }
+    results <- content(response)
+    document <- fromJSON(results)
+    unparsed <- document$facet_counts$facet_fields[[fieldname]]
+    geohash <- unparsed[seq(1, length(unparsed), 2)]
+    downloads <- as.numeric(unparsed[seq(2, length(unparsed), 2)])
+    countdata <- data.frame(geohash, downloads, stringsAsFactors=FALSE)
+    return(countdata)
+}
+
+counts <- counts_by_geohash('nodeId:urn\\:node\\:KNB', 3)
+
+bounds <- as.data.frame(do.call(rbind, lapply(counts$geohash, function(x) {
+    cbind(x, as.data.frame(matrix(unlist(geohash_bounds(x)), nrow=1)), stringsAsFactors=F)
+    }
+    )))
+colnames(bounds) <- c('geohash', 'sw.lat', 'sw.lon', 'ne.lat', 'ne.lon')
+data <- merge(counts, bounds)
+data.subset <- subset(data, downloads<100000000 & downloads > 100)
+
+#world<-get_map("Spain",zoom=2)  # ggmap won't get the whole world, zoom level must be >= 3
+world <- map_data("world")
+data$alpha <- data$downloads/1000
+worldmap <- ggplot(world, aes(x=long, y=lat, group=group)) +
+  geom_path(color='grey20')
+  #coord_map()
+worldmap +
+    geom_rect(data=data, aes(xmin=sw.lon, xmax=ne.lon, ymin=sw.lat, ymax=ne.lat), fill="red", alpha=0.6, inherit.aes = FALSE)
+    #annotate("point",x=7.257885,y=46.79049,size=7) +
+    #annotate("text", x=7.257885,y=46.79049,label="Golden Swiss Area",colour="white",size=3)
+```
+
+See also related graphs on DataONE: https://monitor.dataone.org/_production_history/log_history.html
