@@ -1,4 +1,5 @@
-library(baseN)
+library(baseN)         # install_github("statsmaths/baseN")
+library(rGeoHash)      # install_github("statsmaths/rGeoHash")
 library(bitops)
 
 .base32 <-
@@ -15,23 +16,6 @@ library(bitops)
           "01110", "01111", "10000", "10001", "10010", "10011", "10100",
           "10101", "10110", "10111", "11000", "11001", "11010", "11011",
           "11100", "11101", "11110", "11111")
-}
-
-# Center of the geohash
-fromGeohash <-function(hash) {
-    digits = max(nchar(hash))
-    index = matrix(intToBaseN(match(unlist(strsplit(hash, "")), .base32()) - 1), nrow=digits)
-    index = matrix(unlist(strsplit(apply(index, 2, paste0, sep="", collapse=""), split="")), ncol=length(hash))
-
-    lat_index = apply(index[1:nrow(index) %% 2 == 0,,drop=FALSE],2,as.numeric)
-    lat_inc = 180 / (2 ^ (1:nrow(lat_index)))
-    lat = as.numeric(lat_inc %*% (lat_index - 0.5))
-
-    lon_index = apply(index[1:nrow(index) %% 2 == 1,,drop=FALSE],2,as.numeric)
-    lon_inc = 360 / (2 ^ (1:nrow(lon_index)))
-    lon = as.numeric(lon_inc %*% (lon_index - 0.5))
-
-    return(list(lat=lat, lon=lon))
 }
 
 #' Returns SW/NE latitude/longitude bounds of specified geohash.
