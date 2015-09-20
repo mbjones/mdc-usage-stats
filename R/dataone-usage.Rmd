@@ -10,6 +10,7 @@ library(httr)
 library(jsonlite)
 library(ggplot2)
 library(scales)
+library(plyr)
 source("R/geohash.R")
 ```
 
@@ -20,12 +21,22 @@ Create a graph of data downloads for a given Member Node, such as the KNB:
 #' Query DataONE and summarize download counts by month
 #' @param query a SOLR-encoded query string to choose the set of records to include in the downloads
 #' @return data frame with the counts for each month for that query
-counts_by_month <- function(query='nodeId:urn\\:node\\:KNB') {
+counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character(NA)) {
+    # https://cn.dataone.org/cn/v1/query/logsolr/select?q=event:read+AND+isRepeatVisit:false+AND+inPartialRobotList:false&facet=true&facet.field=pid&facet.mincount=1&facet.limit=1000000&facet.offset=0
     d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
+    filter_counter <- '+AND+isRepeatVisit:false+AND+inFullRobotList:false'
+    filter_partial <- '+AND+isRepeatVisit:false+AND+inPartialRobotList:false'
     d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-08-31T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
     cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
     sslkey="/Users/jones/certs/cn-ucsb-1.dataone.org.key"
-    d1_uri <- paste0(d1_uri_base, query, d1_uri_params)
+    if (!is.na(filter) && grepl('counter', filter) ) {
+        fullquery <- paste0(query, filter_counter)
+    } else if (!is.na(filter) && grepl('partial', filter) ) {
+        fullquery <- paste0(query, filter_partial)
+    } else {
+        fullquery <- query
+    }
+    d1_uri <- paste0(d1_uri_base, fullquery, d1_uri_params)
     print(d1_uri)
     #response <- GET(d1_uri, config=config(sslcert = cert, sslkey = sslkey))
     response <- GET(d1_uri)
@@ -38,6 +49,10 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB') {
     dates <- as.Date(unparsed[seq(1, length(unparsed), 2)])
     downloads <- as.numeric(unparsed[seq(2, length(unparsed), 2)])
     countdata <- data.frame(dates, downloads, stringsAsFactors=FALSE)
+    if (is.na(filter)) {
+        filter <- 'none'
+    }
+    countdata$filter <- filter
     return(countdata)
 }
 
@@ -56,22 +71,44 @@ plot_downloads <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads
         ggtitle(label)
     print(g)
 }
+
+#' Plot a bar graph of a set of download statistics, comparing COUNTER, partial, and no filtering
+#' @param query a SOLR-encoded query string to choose the set of records to include in the downloads
+#' @param label the title for the graph
+plot_comparison <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads') {
+    countdata_none <- counts_by_month(query)
+    countdata_counter <- counts_by_month(query, filter='counter')
+    countdata_partial <- counts_by_month(query, filter='partial')
+    countdata <- rbind.fill(list(countdata_none, countdata_counter, countdata_partial))
+    
+    #print(countdata)
+    g <- ggplot(countdata, aes(x=dates, y=downloads)) + 
+        geom_bar(stat="identity") +
+        facet_grid(. ~ filter) +
+        xlab("Date") +
+        scale_y_continuous(name="Downloads", labels = comma, limits=c(0,400000)) +
+        #scale_y_continuous(name="Downloads", labels = comma) +
+        theme_bw() +
+        theme(legend.title = element_blank()) +
+        ggtitle(label)
+    print(g)
+}
      
 ```
 
 Downloads for all of DataONE:
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-plot_downloads(query='*:*+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', label='All DataONE Downloads')
+plot_comparison(query='*:*+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', label='All DataONE Downloads')
 ```
 
 And for selected nodes:
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-plot_downloads('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
-plot_downloads('nodeId:urn\\:node\\:DRYAD+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'Dryad Downloads')
-plot_downloads('nodeId:urn\\:node\\:PISCO+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'PISCO Downloads')
-plot_downloads('nodeId:urn\\:node\\:ORNLDAAC+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'ORNL Downloads')
-plot_downloads('nodeId:urn\\:node\\:USGSCSAS+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'USGS Downloads')
-plot_downloads('nodeId:urn\\:node\\:LTER+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER Downloads')
+plot_comparison('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
+plot_comparison('nodeId:urn\\:node\\:DRYAD+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'Dryad Downloads')
+plot_comparison('nodeId:urn\\:node\\:PISCO+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'PISCO Downloads')
+plot_comparison('nodeId:urn\\:node\\:ORNLDAAC+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'ORNL Downloads')
+plot_comparison('nodeId:urn\\:node\\:USGSCSAS+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'USGS Downloads')
+plot_comparison('nodeId:urn\\:node\\:LTER+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER Downloads')
 plot_downloads('nodeId:urn\\:node\\:CDL+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'CDL Downloads')
 plot_downloads('nodeId:urn\\:node\\:TFRI+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'TFRI Downloads')
 plot_downloads('nodeId:urn\\:node\\:USANPN+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'USANPN Downloads')
