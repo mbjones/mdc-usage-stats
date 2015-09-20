@@ -10,7 +10,7 @@ library(httr)
 library(jsonlite)
 library(ggplot2)
 library(scales)
-source("geohash.R")
+source("R/geohash.R")
 ```
 
 Create a graph of data downloads for a given Member Node, such as the KNB:
@@ -22,11 +22,13 @@ Create a graph of data downloads for a given Member Node, such as the KNB:
 #' @return data frame with the counts for each month for that query
 counts_by_month <- function(query='nodeId:urn\\:node\\:KNB') {
     d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
-    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-03-31T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
+    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-08-31T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
     cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
     sslkey="/Users/jones/certs/cn-ucsb-1.dataone.org.key"
     d1_uri <- paste0(d1_uri_base, query, d1_uri_params)
-    response <- GET(d1_uri, config=config(sslcert = cert, sslkey = sslkey))
+    print(d1_uri)
+    #response <- GET(d1_uri, config=config(sslcert = cert, sslkey = sslkey))
+    response <- GET(d1_uri)
     if (response$status_code != 200) {
         print("Failed downloading usage stats...")
     }
@@ -48,7 +50,7 @@ plot_downloads <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads
     g <- ggplot(countdata, aes(x=dates, y=downloads)) + 
         geom_bar(stat="identity") +
         xlab("Date") +
-        scale_y_continuous(name="Downloads", labels = comma) +
+        scale_y_continuous(name="Downloads", labels = comma, limits=c(0,400000)) +
         theme_bw() +
         theme(legend.title = element_blank()) +
         ggtitle(label)
@@ -59,7 +61,7 @@ plot_downloads <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads
 
 Downloads for all of DataONE:
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-plot_downloads('*:*+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'All DataONE Downloads')
+plot_downloads(query='*:*+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', label='All DataONE Downloads')
 ```
 
 And for selected nodes:
@@ -121,8 +123,12 @@ colnames(bounds) <- c('geohash', 'sw.lat', 'sw.lon', 'ne.lat', 'ne.lon')
 data <- merge(counts, bounds)
 data.subset <- subset(data, downloads<100000000 & downloads > 100)
 
+library(maps)
+library(mapdata)
 #world<-get_map("Spain",zoom=2)  # ggmap won't get the whole world, zoom level must be >= 3
-world <- map_data("world")
+#world <- map_data("world")
+world <- map_data('world2')
+#world <- map_data('world2Hires')
 data$alpha <- data$downloads/1000
 worldmap <- ggplot(world, aes(x=long, y=lat, group=group)) +
   geom_path(color='grey20')
