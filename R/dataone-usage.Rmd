@@ -11,6 +11,7 @@ library(jsonlite)
 library(ggplot2)
 library(scales)
 library(plyr)
+library(reshape2)
 source("R/geohash.R")
 ```
 
@@ -93,7 +94,18 @@ plot_comparison <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Download
         ggtitle(label)
     print(g)
 }
-     
+
+#' Calculate the percent change in usage based on counter and partial filters
+#' @param countdata a data frame containing usage counts for none, partial, and counter usage
+calc_change <- function(countdata) {
+    cmelt <- melt(countdata, id.vars=c("dates","filter"))
+    ccast <- dcast(cmelt, dates ~ filter)
+    ccast$none[ccast$none == 0] <- 0.1
+    ccast$counter_pct <- ccast$counter / ccast$none
+    ccast$partial_pct <- ccast$partial / ccast$none
+    ccast$diff <- ccast$counter - ccast$partial
+    return(ccast)
+}
 ```
 
 Downloads for all of DataONE:
