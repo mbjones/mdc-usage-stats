@@ -12,6 +12,9 @@ library(ggplot2)
 library(scales)
 library(plyr)
 library(reshape2)
+library(dataone)
+library(grid)
+library(gridExtra)
 source("R/geohash.R")
 ```
 
@@ -54,6 +57,9 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character
         filter <- 'none'
     }
     countdata$filter <- filter
+    countdata$filter <- factor(countdata$filter, levels=c("none", "partial", "counter"), ordered=TRUE)
+    #levels(countdata$filter) <- c("none", "partial", "counter")
+    
     return(countdata)
 }
 
@@ -61,16 +67,16 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character
 #' @param query a SOLR-encoded query string to choose the set of records to include in the downloads
 #' @param label the title for the graph
 plot_downloads <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads') {
-    countdata <- counts_by_month(query)
-    #print(countdata)
+    countdata <- counts_by_month(query, filter='partial')
     g <- ggplot(countdata, aes(x=dates, y=downloads)) + 
-        geom_bar(stat="identity") +
+        geom_bar(stat="identity", drop=TRUE) +
         xlab("Date") +
-        scale_y_continuous(name="Downloads", labels = comma, limits=c(0,400000)) +
+        #scale_y_continuous(name="Downloads", labels = comma, limits=c(0,100000)) +
+        scale_y_log10(name="Downloads", labels = comma, limits=c(1,500000)) +
         theme_bw() +
         theme(legend.title = element_blank()) +
         ggtitle(label)
-    print(g)
+    return(g)
 }
 
 #' Plot a bar graph of a set of download statistics, comparing COUNTER, partial, and no filtering
@@ -82,17 +88,17 @@ plot_comparison <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Download
     countdata_partial <- counts_by_month(query, filter='partial')
     countdata <- rbind.fill(list(countdata_none, countdata_counter, countdata_partial))
     
-    #print(countdata)
     g <- ggplot(countdata, aes(x=dates, y=downloads)) + 
         geom_bar(stat="identity") +
         facet_grid(. ~ filter) +
         xlab("Date") +
-        scale_y_continuous(name="Downloads", labels = comma, limits=c(0,400000)) +
+        #scale_y_continuous(name="Downloads", labels = comma, limits=c(0,400000)) +
+        scale_y_log10(name="Downloads", labels = comma, limits=c(1,500000)) +
         #scale_y_continuous(name="Downloads", labels = comma) +
         theme_bw() +
         theme(legend.title = element_blank()) +
         ggtitle(label)
-    print(g)
+    return(g)
 }
 
 #' Calculate the percent change in usage based on counter and partial filters
@@ -113,24 +119,36 @@ Downloads for all of DataONE:
 plot_comparison(query='*:*+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', label='All DataONE Downloads')
 ```
 
-And for selected nodes:
+And for all member node repositories:
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-plot_comparison('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
-plot_comparison('nodeId:urn\\:node\\:DRYAD+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'Dryad Downloads')
-plot_comparison('nodeId:urn\\:node\\:PISCO+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'PISCO Downloads')
-plot_comparison('nodeId:urn\\:node\\:ORNLDAAC+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'ORNL Downloads')
-plot_comparison('nodeId:urn\\:node\\:USGSCSAS+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'USGS Downloads')
-plot_comparison('nodeId:urn\\:node\\:LTER+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER Downloads')
-plot_downloads('nodeId:urn\\:node\\:CDL+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'CDL Downloads')
-plot_downloads('nodeId:urn\\:node\\:TFRI+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'TFRI Downloads')
-plot_downloads('nodeId:urn\\:node\\:USANPN+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'USANPN Downloads')
-plot_downloads('nodeId:urn\\:node\\:SEAD+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'SEAD Downloads')
-plot_downloads('nodeId:urn\\:node\\:GOA+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'GOA Downloads')
-plot_downloads('nodeId:urn\\:node\\:KUBI+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KUBI Downloads')
-plot_downloads('nodeId:urn\\:node\\:LTER_EUROPE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER EUROPE Downloads')
-plot_downloads('nodeId:urn\\:node\\:EDACGSTORE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'EDAC Downloads')
-plot_downloads('nodeId:urn\\:node\\:IOE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'IOE Downloads')
-plot_downloads('nodeId:urn\\:node\\:GLEON+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'GLEON Downloads')
+cn <- CNode()
+nodes_list <- listNodes(cn)
+nodes_df <- do.call("rbind", lapply(nodes_list, function (x) { as.data.frame(cbind(x@identifier, x@type, x@name)) } ) )
+colnames(nodes_df) <- c("identifier", "type", "name")
+mns <- nodes_df[nodes_df$type == 'mn',]
+
+plot_mn <- function(df) { 
+    escaped_id <- gsub(':', '\\\\:', df$identifier)
+    exclude_ip_fragemnt <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
+    query <- paste0('nodeId:', escaped_id, exclude_ip_fragemnt)
+    return(plot_downloads(query, substr(df$name, 1, 25)))
+}
+
+mn_plots <- by(mns, 1:nrow(mns), plot_mn)
+plot_grid(plotlist=mn_plots, ncol=6)
+
+plot_mn_comparison <- function(df) { 
+    escaped_id <- gsub(':', '\\\\:', df$identifier)
+    exclude_ip_fragemnt <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
+    query <- paste0('nodeId:', escaped_id, exclude_ip_fragemnt)
+    return(plot_comparison(query, substr(df$name, 1, 25)))
+}
+
+mn_comps <- by(mns, 1:nrow(mns), plot_mn_comparison)
+plot_grid(plotlist=mn_comps, ncol=6)
+
+#plot_comparison('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
+#plot_downloads('nodeId:urn\\:node\\:LTER_EUROPE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER EUROPE Downloads')
 ```
 
 # Map Downloads by Geohash
