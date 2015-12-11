@@ -30,7 +30,7 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character
     d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
     filter_counter <- '+AND+isRepeatVisit:false+AND+inFullRobotList:false'
     filter_partial <- '+AND+isRepeatVisit:false+AND+inPartialRobotList:false'
-    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-08-31T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
+    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-11-30T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
     cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
     sslkey="/Users/jones/certs/cn-ucsb-1.dataone.org.key"
     if (!is.na(filter) && grepl('counter', filter) ) {
@@ -135,7 +135,7 @@ plot_mn <- function(df) {
 }
 
 mn_plots <- by(mns, 1:nrow(mns), plot_mn)
-plot_grid(plotlist=mn_plots, ncol=6)
+plot_grid(plotlist=mn_plots, ncol=3)
 
 plot_mn_comparison <- function(df) { 
     escaped_id <- gsub(':', '\\\\:', df$identifier)
@@ -145,7 +145,7 @@ plot_mn_comparison <- function(df) {
 }
 
 mn_comps <- by(mns, 1:nrow(mns), plot_mn_comparison)
-plot_grid(plotlist=mn_comps, ncol=6)
+plot_grid(plotlist=mn_comps, ncol=3)
 
 #plot_comparison('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
 #plot_downloads('nodeId:urn\\:node\\:LTER_EUROPE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER EUROPE Downloads')
