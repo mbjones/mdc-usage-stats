@@ -15,6 +15,7 @@ library(reshape2)
 library(dataone)
 library(grid)
 library(gridExtra)
+library(cowplot)
 source("R/geohash.R")
 ```
 
@@ -27,10 +28,10 @@ Create a graph of data downloads for a given Member Node, such as the KNB:
 #' @return data frame with the counts for each month for that query
 counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character(NA)) {
     # https://cn.dataone.org/cn/v1/query/logsolr/select?q=event:read+AND+isRepeatVisit:false+AND+inPartialRobotList:false&facet=true&facet.field=pid&facet.mincount=1&facet.limit=1000000&facet.offset=0
-    d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
+    d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/?q='
     filter_counter <- '+AND+isRepeatVisit:false+AND+inFullRobotList:false'
     filter_partial <- '+AND+isRepeatVisit:false+AND+inPartialRobotList:false'
-    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2015-11-30T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
+    d1_uri_params <- '&fq=event:read&facet=true&facet.range=dateLogged&facet.range.start=2005-01-01T01:01:01Z&facet.range.end=2016-03-31T24:59:59Z&facet.range.gap=%2B1MONTH&wt=json'
     cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
     sslkey="/Users/jones/certs/cn-ucsb-1.dataone.org.key"
     if (!is.na(filter) && grepl('counter', filter) ) {
@@ -47,7 +48,7 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character
     if (response$status_code != 200) {
         print("Failed downloading usage stats...")
     }
-    results <- content(response)
+    results <- content(response, as="text")
     document <- fromJSON(results)
     unparsed <- document$facet_counts$facet_ranges$dateLogged$counts
     dates <- as.Date(unparsed[seq(1, length(unparsed), 2)])
@@ -69,7 +70,8 @@ counts_by_month <- function(query='nodeId:urn\\:node\\:KNB', filter=as.character
 plot_downloads <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Downloads') {
     countdata <- counts_by_month(query, filter='partial')
     g <- ggplot(countdata, aes(x=dates, y=downloads)) + 
-        geom_bar(stat="identity", drop=TRUE) +
+        geom_bar(stat="identity") +
+#        geom_bar(stat="identity", drop=TRUE) +
         xlab("Date") +
         #scale_y_continuous(name="Downloads", labels = comma, limits=c(0,100000)) +
         scale_y_log10(name="Downloads", labels = comma, limits=c(1,500000)) +
@@ -96,7 +98,8 @@ plot_comparison <- function(query='nodeId:urn\\:node\\:KNB', label='KNB Download
         scale_y_log10(name="Downloads", labels = comma, limits=c(1,500000)) +
         #scale_y_continuous(name="Downloads", labels = comma) +
         theme_bw() +
-        theme(legend.title = element_blank()) +
+        theme(legend.title = element_blank(), 
+              axis.text.x = element_text(angle=70, vjust=0.5)) +
         ggtitle(label)
     return(g)
 }
@@ -129,23 +132,34 @@ mns <- nodes_df[nodes_df$type == 'mn',]
 
 plot_mn <- function(df) { 
     escaped_id <- gsub(':', '\\\\:', df$identifier)
-    exclude_ip_fragemnt <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
-    query <- paste0('nodeId:', escaped_id, exclude_ip_fragemnt)
+    exclude_ip_fragment <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
+    query <- paste0('nodeId:', escaped_id, exclude_ip_fragment)
     return(plot_downloads(query, substr(df$name, 1, 25)))
 }
 
 mn_plots <- by(mns, 1:nrow(mns), plot_mn)
-plot_grid(plotlist=mn_plots, ncol=3)
+p1 <- plot_grid(plotlist=mn_plots[1:12], ncol=3, nrow=4)
+ggsave(paste0("mn-p01-partial-", date_label, ".pdf"), p1, width = 11, height = 8.5)
+p2 <- plot_grid(plotlist=mn_plots[13:24], ncol=3, nrow=4)
+ggsave(paste0("mn-p02-partial-", date_label, ".pdf"), p2, width = 11, height = 8.5)
+p3 <- plot_grid(plotlist=mn_plots[25:nrow(mn_plots)], ncol=3, nrow=4)
+ggsave(paste0("mn-p03-partial-", date_label, ".pdf"), p3, width = 11, height = 8.5)
 
 plot_mn_comparison <- function(df) { 
     escaped_id <- gsub(':', '\\\\:', df$identifier)
-    exclude_ip_fragemnt <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
-    query <- paste0('nodeId:', escaped_id, exclude_ip_fragemnt)
+    exclude_ip_fragment <- '+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)'
+    query <- paste0('nodeId:', escaped_id, exclude_ip_fragment)
     return(plot_comparison(query, substr(df$name, 1, 25)))
 }
 
+date_label <- "2016-03-31"
 mn_comps <- by(mns, 1:nrow(mns), plot_mn_comparison)
-plot_grid(plotlist=mn_comps, ncol=3)
+p1 <- plot_grid(plotlist=mn_comps[1:12], ncol=3, nrow=4)
+ggsave(paste0("mn-p01-comparison-", date_label, ".pdf"), p1, width = 11, height = 8.5)
+p2 <- plot_grid(plotlist=mn_comps[13:24], ncol=3, nrow=4)
+ggsave(paste0("mn-p02-comparison-", date_label, ".pdf"), p2, width = 11, height = 8.5)
+p3 <- plot_grid(plotlist=mn_comps[25:nrow(mn_comps)], ncol=3, nrow=4)
+ggsave(paste0("mn-p03-comparison-", date_label, ".pdf"), p3, width = 11, height = 8.5)
 
 #plot_comparison('nodeId:urn\\:node\\:KNB+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'KNB Downloads')
 #plot_downloads('nodeId:urn\\:node\\:LTER_EUROPE+AND+-ipAddress:(128.111.54.80+OR+160.36.13.150+OR+64.106.40.6)', 'LTER EUROPE Downloads')
@@ -161,7 +175,7 @@ plot_grid(plotlist=mn_comps, ncol=3)
 counts_by_geohash <- function(query='nodeId:urn\\:node\\:KNB', level=3) {
     #               https://cn.dataone.org/cn/v1/query/logsolr/select?q='
     # &fq=event:read&facet=true&facet.field=geohash_4&wt=json
-    d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/select?q='
+    d1_uri_base <- 'https://cn.dataone.org/cn/v1/query/logsolr/?q='
     d1_uri_params <- '&facet.limit=5000&wt=json&fq=event:read&facet=true&facet.field='
     fieldname <- paste0('geohash_', level)
     cert="/Users/jones/certs/cn-ucsb-1.dataone.org.pem"
@@ -171,7 +185,7 @@ counts_by_geohash <- function(query='nodeId:urn\\:node\\:KNB', level=3) {
     if (response$status_code != 200) {
         print("Failed downloading usage stats...")
     }
-    results <- content(response)
+    results <- content(response, as="text")
     document <- fromJSON(results)
     unparsed <- document$facet_counts$facet_fields[[fieldname]]
     geohash <- unparsed[seq(1, length(unparsed), 2)]
